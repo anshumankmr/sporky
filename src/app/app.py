@@ -20,5 +20,5 @@ async def handle_query(query_text: QueryText):
     """
     Handle incoming query text and return the response.
     """
-    result = get_music_recommendations(query_text.query, query_text.history)
+    result = await get_music_recommendations(query_text.query, query_text.history)
     return result

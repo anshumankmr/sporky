@@ -1,21 +1,39 @@
-import os
+# agent.py
 from autogen import AssistantAgent, UserProxyAgent, GroupChat, GroupChatManager
-# from autogen import ConversableAgent
-
-# Import the configuration from the separate Python file
+from typing import List, Dict, Optional
 from config.llm_config import openai_config
 from tools.spotify_tools import search_tracks, create_playlist
 
-def get_music_recommendations(query, history=None):
+class ResumableGroupChatManager(GroupChatManager):
     """
-    Get music recommendations based on the user query.
+    A GroupChatManager that can resume conversations from previous history.
     """
-    # user_proxy = UserProxyAgent("user_proxy", code_execution_config=False)
+    def __init__(self, groupchat: GroupChat, history: Optional[List[Dict]] = None, **kwargs):
+        # First call super().__init__ to properly set up the GroupChatManager
+        super().__init__(groupchat=groupchat, **kwargs)
+        
+        # Then handle the history if provided
+        if history:
+            groupchat.messages = history
+            self.restore_from_history(history)
+    
+    def restore_from_history(self, history: List[Dict]) -> None:
+        """Restore conversation state from history."""
+        for message in history:
+            # Broadcast the message to all agents except the speaker
+            for agent in self._groupchat.agents:
+                if agent.name != message.get("name"):
+                    self.send(message, agent, request_reply=False, silent=True)
 
-    sporky_asst = AssistantAgent(
-        name="Sporky",
-        llm_config=openai_config,
-        system_message="""**You are Sporky, a highly enthusiastic and knowledgeable audiophile.**
+class MusicRecommendationSystem:
+    """
+    A system for handling music recommendations through API endpoints.
+    """
+    def __init__(self):
+        self.sporky = AssistantAgent(
+            name="Sporky",
+            llm_config=openai_config,
+            system_message="""**You are Sporky, a highly enthusiastic and knowledgeable audiophile.**
         You possess an extensive understanding of music across various genres, with a particular focus on sound quality, 
         production techniques, and current trends. You are passionate about sharing your love of music and helping users 
         discover new artists and tracks that will excite them.
@@ -28,33 +46,63 @@ def get_music_recommendations(query, history=None):
         * **Focus:** Sound quality, current trends, personal recommendations, and the overall listening experience.
 
         **Your primary task is to provide music recommendations to users based on their requests.**""",
-        description="An AI assistant capable of finding music to build playlists and add its own suggestions to the user.",
-        human_input_mode="NEVER"
-    )
+            description="An AI assistant for music recommendations and playlist creation.",
+            human_input_mode="NEVER"
+        )
 
-    user_agent = UserProxyAgent(
-        name="UserAgent",
-        llm_config=openai_config,
-        description="A human user capable of interacting with AI agents.",
-        code_execution_config=False,
-        human_input_mode="NEVER"
-    )
+        self.user_proxy = UserProxyAgent(
+            name="UserAgent",
+            llm_config=openai_config,
+            description="A human user interacting through the API.",
+            code_execution_config=False,
+            human_input_mode="NEVER",
+            is_termination_msg=lambda message: True
+        )
 
-    user_agent.register_for_execution(name="create_playlist")(create_playlist)
-    user_agent.register_for_execution(name="search_tracks")(search_tracks)
+        # Register tools once at initialization
+        self.user_proxy.register_for_execution(name="create_playlist")(create_playlist)
+        self.user_proxy.register_for_execution(name="search_tracks")(search_tracks)
 
-    group_chat = GroupChat(agents=[user_agent, sporky_asst], messages=[], max_round=2)
-    group_manager = GroupChatManager(
-        groupchat=group_chat,
-        llm_config=openai_config,
-        human_input_mode="NEVER"
-    )
+    def _setup_group_chat(self, history: Optional[List[Dict]] = None) -> tuple[GroupChat, GroupChatManager]:
+        """Set up the group chat with optional history."""
+        # Create group chat first
+        group_chat = GroupChat(
+            agents=[self.user_proxy, self.sporky],
+            messages=[] if history is None else history,
+            max_round=5
+        )
 
-    response = user_agent.initiate_chat(group_manager, message=query)
-    return response
+        # Create manager with the group chat
+        manager = ResumableGroupChatManager(
+            groupchat=group_chat,
+            llm_config=openai_config,
+            human_input_mode="NEVER"
+        )
 
-# # Example usage
-# if __name__ == "__main__":
-#     query_text = "Suggest me a phonk music playlist with some sad songs."
-#     result = get_music_recommendations(query_text)
-#     print(result)
+        return group_chat, manager
+
+    async def get_recommendation(self, query: str, history: Optional[List[Dict]] = None) -> Dict:
+        """Process a music recommendation request."""
+        group_chat, manager = self._setup_group_chat(history)
+        
+        # Initiate chat and wait for response
+        await self.user_proxy.a_initiate_chat(
+            manager,
+            message=query,
+            clear_history=False
+        )
+
+        # Get the last message and all history
+        last_message = group_chat.messages[-1]["content"] if group_chat.messages else ""
+        
+        return {
+            "response": last_message,
+            "history": group_chat.messages
+        }
+
+# Create singleton instance
+music_system = MusicRecommendationSystem()
+
+async def get_music_recommendations(query: str, history: Optional[List[Dict]] = None) -> Dict:
+    """Get music recommendations via the API."""
+    return await music_system.get_recommendation(query, history)
