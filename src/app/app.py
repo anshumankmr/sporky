@@ -50,13 +50,13 @@ def fetch_hist():
             result = await func(query_text)
             
             # If the result contains a "response" field, append user query and response to history.
-            if isinstance(result, dict) and "response" in result:
+            if isinstance(result, dict) and "content" in result['response']:
                 query_text.history.append({
                     "content": query_text.query,
                     "role": "user"
                 })
                 query_text.history.append({
-                    "content": result["response"],
+                    "content": result["response"]["content"],
                     "role": "agent"
             })
             
@@ -64,7 +64,7 @@ def fetch_hist():
             doc_ref.set({
                 'history': query_text.history
             })
-            
+            result['response'] =  result["response"]["content"]
             return result
         return wrapper
     return decorator
