@@ -40,6 +40,7 @@ def search_tracks(
     max_year: Optional[int] = None
 ) -> List[Dict]:
     """Search for tracks based on a keyword."""
+    print(f"Searching for tracks with keyword: {keyword}")
     results = client.search(q=keyword, type='track', limit=limit * 2)
     tracks = list(map(extract_track_info, results['tracks']['items']))
     
