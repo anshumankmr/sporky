@@ -7,6 +7,18 @@ from functools import partial
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
+def get_spotify_assistant_message(messages: List[Dict]) -> str:
+    """Extracts the content of the most recent message from the 'spotify_assistant'.
+        Args:
+            messages (List[Dict]): A list of messages, where each message is a dictionary.
+        Returns:
+            str: The content of the most recent message with the name 'spotify_assistant', 
+                 or an empty string if no such message is found.
+    """
+    for message in reversed(messages):
+        if message.get("name") == "spotify_assistant":
+            return message.get("content", "")
+    return ""
 def create_spotify_client() -> spotipy.Spotify:
     """Create and return a Spotify client."""
     return spotipy.Spotify(auth_manager=SpotifyOAuth(

@@ -1,9 +1,9 @@
 import traceback
+import os
 from functools import wraps
 from fastapi import FastAPI,HTTPException
 from pydantic import BaseModel
 from agent import get_music_recommendations
-import os
 import firebase_admin
 from firebase_admin import credentials, firestore
 from fastapi import Request
@@ -16,7 +16,7 @@ class QueryText(BaseModel):
     query: str
     history: list = []
     session_id: str
-
+    playlist: str = ""
 
 # Initialize Firestore
 if not firebase_admin._apps:
@@ -51,20 +51,25 @@ def fetch_hist():
             
             # If the result contains a "response" field, append user query and response to history.
             if isinstance(result, dict) and "content" in result['response']:
-                query_text.history.append({
-                    "content": query_text.query,
-                    "role": "user"
-                })
-                query_text.history.append({
-                    "content": result["response"]["content"],
-                    "role": "agent"
-            })
+                result["response"]["content"] = result["response"]["content"].replace(
+                    "<END_CONVERSATION>", ""
+                )
+
+            
+            # Check if there is a playlist in the response, upsert it in Firestore,
+            # and attach the playlist to the query text.
+            if isinstance(result, dict) and "playlist" in result["response"]:
+                playlist = result["response"]["playlist"]
+                playlist_doc_ref = db.collection('playlists').document(query_text.session_id)
+                playlist_doc_ref.set({'playlist': playlist}, merge=True)
+                # Attaching playlist information to query_text for further processing.
+                query_text.__setattr__('playlist', playlist)
             
             # Save updated history after execution
             doc_ref.set({
-                'history': query_text.history
+                'history': result["history"]
             })
-            result['response'] =  result["response"]["content"]
+            result['response'] = result["response"]["content"]
             return result
         return wrapper
     return decorator
@@ -84,7 +89,8 @@ async def handle_query(query_text: QueryText):
     try:
         result = await get_music_recommendations(
             query=query_text.query,
-            history=query_text.history
+            history=query_text.history,
+            playlist=query_text.playlist
         )
         return result
     except Exception as e:
