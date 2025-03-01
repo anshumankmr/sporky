@@ -58,8 +58,8 @@ def fetch_hist():
             
             # Check if there is a playlist in the response, upsert it in Firestore,
             # and attach the playlist to the query text.
-            if isinstance(result, dict) and "playlist" in result["response"]:
-                playlist = result["response"]["playlist"]
+            if isinstance(result, dict) and "playlist" in result:
+                playlist = result["playlist"]
                 playlist_doc_ref = db.collection('playlists').document(query_text.session_id)
                 playlist_doc_ref.set({'playlist': playlist}, merge=True)
                 # Attaching playlist information to query_text for further processing.

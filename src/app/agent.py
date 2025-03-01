@@ -30,10 +30,11 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
         is_termination_msg=lambda msg: "<END_CONVERSATION>" in msg
         # llm_config=groq_config
     )
-    assistant = ConversableAgent(
+    prompt_manager = PromptManager()
+    llm_assistant = ConversableAgent(
         name="llm_assistant",
         llm_config=openai_config,
-        system_message=PromptManager().get_prompt("spotifyagent"),
+        system_message=prompt_manager.get_prompt("spotifyagent"),
         is_termination_msg=lambda msg: "<END_CONVERSATION>" in msg  # Check for <END_CONVERSATION> token
     )
     search_asst = ConversableAgent(
@@ -53,7 +54,7 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
         """
         messages = groupchat.messages
         if last_speaker is spotify_assistant:
-            return assistant
+            return llm_assistant
         if last_speaker is user_proxy:
             if "<END_CONVERSATION>" in messages[-1]["content"]:
                 return None
@@ -62,7 +63,7 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
             return spotify_assistant
         return None
     groupchat = GroupChat(
-        agents=[user_proxy, spotify_assistant,assistant,search_asst],
+        agents=[user_proxy, spotify_assistant,llm_assistant,search_asst],
         messages= history or [],allow_repeat_speaker=False,
         max_round=4,speaker_selection_method=custom_speaker_selection_func
     )

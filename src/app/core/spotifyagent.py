@@ -28,10 +28,6 @@ class SpotifyAgent(ConversableAgent):
         last_message = messages[-1]["content"]
         result = search_tracks(client =  self.spotify_client,keyword= last_message)
         print('result of search_tracks',result)
-    #     formatted_result = "Sure here's some music that fits your query. " + "\n\n".join(
-    # [f"* Track Name: {track['name']}   \n**Artist:** {track['artist']}  \n**Album:** {track['album']}  \n**Released:** {track['release_date']}"
-    #  for track in result]
-    #     )
         return True,  {"content": json.dumps(result), "type": "text", "raw_response": result}
     
     async def create_playlist(
