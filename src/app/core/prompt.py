@@ -14,7 +14,8 @@ class PromptManager:
         # Read the spotify prompt from the sporky.md file
         prompts_dir = os.path.join(os.path.dirname(__file__), 'prompts')
         self.prompts = {}
-        prompt_files = ['spotify.md', 'spotifyagent.md']
+        prompt_files = [f for f in os.listdir(prompts_dir)
+                if os.path.isfile(os.path.join(prompts_dir, f)) and f.endswith('.md')]
         for prompt_file in prompt_files:
             prompt_name = os.path.splitext(prompt_file)[0]
             with open(os.path.join(prompts_dir, prompt_file), 'r') as file:

@@ -20,7 +20,7 @@ if os.getenv('LOCAL') == 'true':
 
 async def get_music_recommendations(query: str, playlist: Optional[str], history: Optional[List[Dict]] = None) -> Dict:
     """Get music recommendations via the API."""
-    prompt = PromptManager().get_prompt("spotify")
+    sporky_system_prompt = PromptManager().get_prompt("sporky_system_prompt")
 
     router_agent = AssistantAgent(
         name="router_agent",
@@ -48,29 +48,22 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
         Query: "Save these songs to my evening playlist"
         JSON Output: {{"action": "make_playlist"}}
         """,
-        # max_consecutive_auto_reply=1,
         model_client=openai_client,
-        # is_termination_msg=lambda msg: "<END_CONVERSATION>" in msg  # Check for <END_CONVERSATION> token
     )
     spotify_search_assistant = SpotifyAgent(
-        name="spotify_search_assistant",
-        # system_message=prompt,
-        # max_consecutive_auto_reply=1,
-        # is_termination_msg=lambda msg: "<END_CONVERSATION>" in msg
+        name="spotify_search_assistant"
     )
     prompt_manager = PromptManager()
     format_assistant = AssistantAgent(
         name="format_assistant",
         model_client=openai_client,
-        system_message=prompt_manager.get_prompt("spotifyagent"),
+        system_message=prompt_manager.get_prompt("format_playlist_response"),
         # is_termination_msg=lambda msg: "<END_CONVERSATION>" in msg  # Check for <END_CONVERSATION> token
     )
     search_assistant = AssistantAgent(
         name="search_assistant",
         model_client=openai_client,
-        system_message="""You are a helpful assistant. Follow these steps:
-1. Analyze the user's query to generate EXACTLY ONE search keyword/phrase for Spotify. You will not generate any songs yourself. Only keywords to find songs.
-2. Send the keyword/phrase to the Spotify Assistant to search for songs.""",
+        system_message=sporky_system_prompt,
     )
     def custom_speaker_selection_func(messages: Sequence[AgentEvent | ChatMessage]) -> str | None:
         """Define the conversation flow between agents.

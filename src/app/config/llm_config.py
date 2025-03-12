@@ -7,7 +7,7 @@ from autogen_core.models import ChatCompletionClient
 openai_config = {
     "provider": "OpenAIChatCompletionClient",
     "config": {
-        "model": "gpt-4o",
+        "model": "o3-mini",
         "api_key": os.getenv("OPENAI_API_KEY")
     }
 }
@@ -20,7 +20,7 @@ groq_config = {
     "description": "Chat completion client for Groq models",
     "label": "GroqChatCompletionClient",
     "config": {
-        "model": "llama-3.3-70b-versatile",
+        "model": "deepseek-r1-distill-llama-70b",
         "model_info": {
             "vision": False,
             "function_calling": True,
