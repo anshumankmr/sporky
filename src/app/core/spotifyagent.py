@@ -1,44 +1,69 @@
 """
 Class to handle Spotify Agentic Tasks
 """
-from typing import Dict, List, Tuple, Union,Optional,List,Dict
-from autogen import ConversableAgent,AssistantAgent,Agent
+from typing import AsyncGenerator, List, Sequence, Dict
 import json
+from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.base import Response
+from autogen_agentchat.messages import AgentEvent, ChatMessage, TextMessage
+from autogen_core import CancellationToken
 from tools.spotify_tools import search_tracks, create_playlist,create_spotify_client
-class SpotifyAgent(ConversableAgent):
+
+class SpotifyAgent(AssistantAgent):
     """
     Class to handle Spotify Agentic Tasks
     """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, llm_config=False, **kwargs)
+    def __init__(self, name: str):
+        super().__init__(name, "An agent that interfaces with Spotify API")
         self.spotify_client = create_spotify_client()
-        self.register_reply(Agent, SpotifyAgent.search_tracks)
-        # self.register_reply(Agent, SpotifyAgent.create_playlist)
 
-    async def search_tracks(
-        self,
-        messages: List[Dict] = [],
-        sender=None,
-        config=None,
-    ) -> Tuple[bool, Union[str, Dict, None]]:
-        """
-        Helper to call the Spotify API for searching keyword
-        based tracks
-        """
-        last_message = messages[-1]["content"]
-        result = search_tracks(client =  self.spotify_client,keyword= last_message)
-        print('result of search_tracks',result)
-        return True,  {"content": json.dumps(result), "type": "text", "raw_response": result}
-    
-    async def create_playlist(
-        self,
-        messages: List[Dict] = [],
-        sender=None,
-        config=None,
-    ) -> Tuple[bool, Union[str, Dict, None]]:
-        """
-        Helper to call the Spotify API to create the playlist
-        """
-        last_message = messages[-1]["content"]
-        result = create_playlist(client =  self.spotify_client,tracks=last_message,name="My Playlist") #NEED TO CUSTOMIZE THIS PUPPY
-        return True, {"content": result}
+    @property
+    def produced_message_types(self) -> Sequence[type[ChatMessage]]:
+        return (TextMessage,)
+
+    async def on_messages(self, messages: Sequence[ChatMessage], cancellation_token: CancellationToken) -> Response:
+        response: Response | None = None
+        async for message in self.on_messages_stream(messages, cancellation_token):
+            if isinstance(message, Response):
+                response = message
+        assert response is not None
+        return response
+
+    async def on_messages_stream(
+        self, messages: Sequence[ChatMessage], cancellation_token: CancellationToken
+    ) -> AsyncGenerator[AgentEvent | ChatMessage | Response, None]:
+        if not messages:
+            yield Response(chat_message=TextMessage(content="No messages received", source=self.name))
+            return
+
+        def find_message(messages: Sequence[ChatMessage], source: str = "user") -> str | None:
+            for message in messages:
+                if message.source == source:
+                    return message.content
+            return None
+
+        last_message = find_message(messages,source='search_assistant')
+        
+        # Handle search tracks
+        if last_message:
+            keyword = last_message.replace("search:", "").strip()
+            result = search_tracks(client=self.spotify_client, keyword=keyword)
+            response_content = json.dumps(result)
+            # yield TextMessage(content=response_content, source=self.name)
+            yield Response(
+                chat_message=TextMessage(content=response_content, source=self.name),
+                inner_messages=[]
+            )
+
+        # # Handle playlist creation
+        # elif "create_playlist:" in last_message:
+        #     tracks = last_message.replace("create_playlist:", "").strip()
+        #     result = create_playlist(client=self.spotify_client, tracks=tracks, name="My Playlist")
+        #     yield TextMessage(content=result, source=self.name)
+        #     yield Response(
+        #         chat_message=TextMessage(content="Playlist created", source=self.name),
+        #         inner_messages=[]
+        #     )
+
+    async def on_reset(self, cancellation_token: CancellationToken) -> None:
+        pass

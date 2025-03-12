@@ -1,86 +1,120 @@
 """
 Core Wrapper for all the fun stuff
 """
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional,Sequence
 import os
-from autogen import ConversableAgent, UserProxyAgent, GroupChat, Agent
-from core.resumablegroupchatmanager import ResumableGroupChatManager
+from autogen_agentchat.agents import AssistantAgent
+from autogen_agentchat.messages import AgentEvent, ChatMessage
+from autogen_agentchat.teams import SelectorGroupChat
+from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermination
+from autogen_core import CancellationToken
+from autogen_agentchat.messages import TextMessage
 from core.spotifyagent import SpotifyAgent
 from core.prompt import PromptManager
-from config.llm_config import groq_config,openai_config
+from config.llm_config import openai_client, groq_client
 from tools.spotify_tools import get_spotify_assistant_message
+from tools.llm_tools import extract_json_from_llm_response
 
-
-if os.getenv('Local') == 'true':
-    openai_config = groq_config
+if os.getenv('LOCAL') == 'true':
+    openai_client = groq_client
 
 async def get_music_recommendations(query: str, playlist: Optional[str], history: Optional[List[Dict]] = None) -> Dict:
     """Get music recommendations via the API."""
     prompt = PromptManager().get_prompt("spotify")
-    user_proxy = UserProxyAgent(
-        name="user_proxy",
-        human_input_mode="NEVER",
-        code_execution_config=False,
-        is_termination_msg=lambda _: True # Always True
+
+    router_agent = AssistantAgent(
+        name="router_agent",
+        system_message=f"""
+        You are a router agent. Based on the following query and history, determine the appropriate action.
+        
+        Query: {query}
+        History: {history if history else []}
+        
+        INSTRUCTIONS:
+        Output ONLY ONE valid JSON object with a single key "action". The value must be one of:
+        - "search_tracks": For finding specific songs or getting recommendations.
+        - "make_playlist": For creating/modifying playlists.
+        
+        Examples:
+        Query: "Find me some rock songs"
+        JSON Output: {{"action": "search_tracks"}}
+        
+        Query: "Create a workout playlist with these songs"
+        JSON Output: {{"action": "make_playlist"}}
+        
+        Query: "I want upbeat pop music"
+        JSON Output: {{"action": "search_tracks"}}
+        
+        Query: "Save these songs to my evening playlist"
+        JSON Output: {{"action": "make_playlist"}}
+        """,
+        # max_consecutive_auto_reply=1,
+        model_client=openai_client,
+        # is_termination_msg=lambda msg: "<END_CONVERSATION>" in msg  # Check for <END_CONVERSATION> token
     )
-    spotify_assistant = SpotifyAgent(
-        name="spotify_assistant",
-        system_message=prompt,
-        max_consecutive_auto_reply=1,
-        is_termination_msg=lambda msg: "<END_CONVERSATION>" in msg
-        # llm_config=groq_config
+    spotify_search_assistant = SpotifyAgent(
+        name="spotify_search_assistant",
+        # system_message=prompt,
+        # max_consecutive_auto_reply=1,
+        # is_termination_msg=lambda msg: "<END_CONVERSATION>" in msg
     )
     prompt_manager = PromptManager()
-    llm_assistant = ConversableAgent(
-        name="llm_assistant",
-        llm_config=openai_config,
+    format_assistant = AssistantAgent(
+        name="format_assistant",
+        model_client=openai_client,
         system_message=prompt_manager.get_prompt("spotifyagent"),
-        is_termination_msg=lambda msg: "<END_CONVERSATION>" in msg  # Check for <END_CONVERSATION> token
+        # is_termination_msg=lambda msg: "<END_CONVERSATION>" in msg  # Check for <END_CONVERSATION> token
     )
-    search_asst = ConversableAgent(
-        name="search_asst",
-        llm_config=openai_config,
+    search_assistant = AssistantAgent(
+        name="search_assistant",
+        model_client=openai_client,
         system_message="""You are a helpful assistant. Follow these steps:
 1. Analyze the user's query to generate EXACTLY ONE search keyword/phrase for Spotify. You will not generate any songs yourself. Only keywords to find songs.
 2. Send the keyword/phrase to the Spotify Assistant to search for songs.""",
-        is_termination_msg=lambda msg: "<END_CONVERSATION>" in msg  # Check for <END_CONVERSATION> token
     )
-    def custom_speaker_selection_func(last_speaker: Agent, groupchat: GroupChat):
-        """Define a customized speaker selection function.
-        A recommended way is to define a transition for each speaker in the groupchat.
-
-        Returns:
-            Return an `Agent` class or a string from ['auto', 'manual', 'random', 'round_robin'] to select a default method to use.
+    def custom_speaker_selection_func(messages: Sequence[AgentEvent | ChatMessage]) -> str | None:
+        """Define the conversation flow between agents.
+        Flow: router_agent -> search_assistant -> spotify_search_assistant -> format_assistant
         """
-        messages = groupchat.messages
-        if last_speaker is spotify_assistant:
-            return llm_assistant
-        if last_speaker is user_proxy:
-            if "<END_CONVERSATION>" in messages[-1]["content"]:
+        last_message = messages[-1]
+        if last_message.source == 'user':
+            return router_agent.name
+        if last_message.source == router_agent.name:
+            print('last_speaker is router_agent')
+            try:
+                action = extract_json_from_llm_response(last_message.content)["action"]
+                if action == "search_tracks":
+                    return search_assistant.name
+                # Note: Add playlist agent handling here when implemented
+                # elif action == "make_playlist":
+                #     return playlist_agent
+            except (KeyError, ValueError) as e:
+                print("Message appears to be user input, routing to router_agent")
+                if last_message.role == "user":
+                    return router_agent.name
+                print("JSON parsing error:", e)
                 return None
-            return search_asst
-        elif last_speaker is search_asst:
-            return spotify_assistant
+        if last_message.source == spotify_search_assistant.name:
+            print('last_speaker is spotify_search_assistant')
+            return format_assistant.name
+        if last_message.source == search_assistant.name:
+            print('last_speaker is search_assistant')
+            return spotify_search_assistant.name
         return None
-    groupchat = GroupChat(
-        agents=[user_proxy, spotify_assistant,llm_assistant,search_asst],
-        messages= history or [],allow_repeat_speaker=False,
-        max_round=4,speaker_selection_method=custom_speaker_selection_func
-    )
-    manager = ResumableGroupChatManager(
-        name="Manager",
-        groupchat=groupchat,
-        history=history,
-        llm_config=openai_config,
-        max_consecutive_auto_reply=1,
-        is_termination_msg=lambda msg: "<END_CONVERSATION>" in msg
+    text_mention_termination = TextMentionTermination("<END_CONVERSATION>")
+    max_messages_termination = MaxMessageTermination(max_messages=25)
+    termination = text_mention_termination | max_messages_termination
+    team = SelectorGroupChat(
+        [spotify_search_assistant, format_assistant, search_assistant, router_agent],
+        selector_func=custom_speaker_selection_func,
+        model_client=openai_client,
+        termination_condition=termination
     )
 
-    await user_proxy.a_initiate_chat(manager, message=query,clear_history=False) #https://github.com/microsoft/autogen/issues/837
-
+    response = await team.run(task=query)
 
     return {
-        "response": groupchat.messages[-1],
-        "history": groupchat.messages,
-        "playlist": get_spotify_assistant_message(groupchat.messages)
+        "response": response.messages[-1].content,
+        "history": "response",
+        "playlist": [] #get_spotify_assistant_message(groupchat.messages)
     }
