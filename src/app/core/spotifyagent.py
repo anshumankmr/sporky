@@ -50,6 +50,7 @@ class SpotifyAgent(AssistantAgent):
             return
 
         search_keyword = self._extract_message_from_source(messages, "search_assistant")
+        router_agent = self._extract_message_from_source(messages, "router_agent")
         if search_keyword:
             keyword = search_keyword.replace("search:", "", 1).strip()
             # Split the keyword by comma to search with multiple keywords if provided

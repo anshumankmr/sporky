@@ -1,10 +1,9 @@
-import os
-
-"""Module for managing prompts in the YouTube Buddy application.
-
+"""
+Module for managing prompts in the YouTube Buddy application.
 This module provides functionality to store and retrieve various prompts used
 throughout the application for consistent user interaction.
 """
+import os
 
 class PromptManager:
     """Manages a collection of predefined prompts for the application."""
@@ -18,7 +17,7 @@ class PromptManager:
                 if os.path.isfile(os.path.join(prompts_dir, f)) and f.endswith('.md')]
         for prompt_file in prompt_files:
             prompt_name = os.path.splitext(prompt_file)[0]
-            with open(os.path.join(prompts_dir, prompt_file), 'r') as file:
+            with open(os.path.join(prompts_dir, prompt_file), 'r',encoding='utf-8') as file:
                 self.prompts[prompt_name] = file.read().strip()
 
     def get_prompt(self, prompt_name, **kwargs):

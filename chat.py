@@ -144,9 +144,9 @@ def send_message(message):
 # Initialize message history and suggestion state
 if "messages" not in st.session_state:
     st.session_state.messages = []
-    WELCOME_MESSAGE = """Hey there! I'm Sporky. 🍽️
+    WELCOME_MESSAGE = """Hi there! I'm Sporky 😄
 
-I have a passion for helping you create the perfect playlist?"""
+I'm here to help you create the perfect playlist for any mood. Let's make some musical magic together!"""
     st.session_state.messages.append({
         "role": "assistant",
         "content": WELCOME_MESSAGE

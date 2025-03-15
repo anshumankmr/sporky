@@ -14,40 +14,24 @@ from core.prompt import PromptManager
 from config.llm_config import openai_client, groq_client
 from tools.spotify_tools import get_spotify_assistant_message
 from tools.llm_tools import extract_json_from_llm_response
+import logging
+from autogen_core import TRACE_LOGGER_NAME
+
+logging.basicConfig(level=logging.WARNING)
+trace_logger = logging.getLogger(TRACE_LOGGER_NAME)
+trace_logger.addHandler(logging.StreamHandler())
+trace_logger.setLevel(logging.DEBUG)
 
 if os.getenv('LOCAL') == 'true':
     openai_client = groq_client
 
 async def get_music_recommendations(query: str, playlist: Optional[str], history: Optional[List[Dict]] = None) -> Dict:
     """Get music recommendations via the API."""
-    sporky_system_prompt = PromptManager().get_prompt("sporky_system_prompt")
+    sporky_system_prompt = PromptManager().get_prompt("sporky_system_prompt",history=[])
 
     router_agent = AssistantAgent(
         name="router_agent",
-        system_message=f"""
-        You are a router agent. Based on the following query and history, determine the appropriate action.
-        
-        Query: {query}
-        History: {history if history else []}
-        
-        INSTRUCTIONS:
-        Output ONLY ONE valid JSON object with a single key "action". The value must be one of:
-        - "search_tracks": For finding specific songs or getting recommendations.
-        - "make_playlist": For creating/modifying playlists.
-        
-        Examples:
-        Query: "Find me some rock songs"
-        JSON Output: {{"action": "search_tracks"}}
-        
-        Query: "Create a workout playlist with these songs"
-        JSON Output: {{"action": "make_playlist"}}
-        
-        Query: "I want upbeat pop music"
-        JSON Output: {{"action": "search_tracks"}}
-        
-        Query: "Save these songs to my evening playlist"
-        JSON Output: {{"action": "make_playlist"}}
-        """,
+        system_message=PromptManager().get_prompt('router_agent',query=query, history=[]),
         model_client=openai_client,
     )
     spotify_search_assistant = SpotifyAgent(
@@ -103,11 +87,13 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
         model_client=openai_client,
         termination_condition=termination
     )
-
+    if history:
+        await team.load_state(history)
     response = await team.run(task=query)
+    state = await team.save_state()
 
     return {
         "response": response.messages[-1].content,
-        "history": "response",
+        "history": state,
         "playlist": [] #get_spotify_assistant_message(groupchat.messages)
     }
