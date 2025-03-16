@@ -46,6 +46,13 @@ def fetch_hist():
             if doc.exists:
                 query_text.history = doc.to_dict().get('history', [])
                 print(query_text.history)
+            
+            # Fetch playlist before execution
+            playlist_doc_ref = db.collection('playlists').document(query_text.session_id)
+            playlist_doc = playlist_doc_ref.get()
+            if playlist_doc.exists:
+                query_text.playlist = playlist_doc.to_dict().get('playlist', '')
+
             # Execute the original function
             result = await func(query_text)
 
@@ -55,7 +62,7 @@ def fetch_hist():
                     "<END_CONVERSATION>", ""
                 )
 
-            # Check if there is a playlist in the response, upsert it in Firestore, and attach the playlist to the query text.
+            # Optionally, update playlist in Firestore if it was modified in the response
             if isinstance(result, dict) and "playlist" in result:
                 playlist = result["playlist"]
                 playlist_doc_ref = db.collection('playlists').document(query_text.session_id)
@@ -65,7 +72,7 @@ def fetch_hist():
 
             # Save updated history after execution
             doc_ref.set({
-                'history': result["history"]
+                'history': result["state"]
             })
             return result
         return wrapper

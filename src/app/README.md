@@ -96,7 +96,7 @@ streamlit run chat.py
 {
   "query": "I need upbeat songs for my morning workout",
   "session_id": "user123",
-  "history": [],
+  "state": [],
   "playlist": ""
 }
 ```

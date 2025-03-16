@@ -7,17 +7,17 @@ from functools import partial
 import spotipy
 from spotipy.oauth2 import SpotifyOAuth
 
-def get_spotify_assistant_message(messages: List[Dict]) -> str:
-    """Extracts the content of the most recent message from the 'spotify_assistant'.
+def  get_spotify_assistant_message(messages: List[Dict]) -> str:
+    """Extracts the content of the most recent message from the 'spotify_agent_assistant'.
         Args:
-            messages (List[Dict]): A list of messages, where each message is a dictionary.
+            messages (List[Dict]): A list of TextMessage objects.
         Returns:
-            str: The content of the most recent message with the name 'spotify_assistant', 
+            str: The content of the most recent message with source 'spotify_agent_assistant', 
                  or an empty string if no such message is found.
     """
     for message in reversed(messages):
-        if message.get("name") == "spotify_assistant":
-            return message.get("content", "")
+        if message.source == 'spotify_agent_assistant':
+            return message.content
     return ""
 def create_spotify_client() -> spotipy.Spotify:
     """Create and return a Spotify client."""
@@ -73,20 +73,41 @@ def display_tracks(tracks: List[Dict]) -> None:
 
 def create_playlist(
     client: spotipy.Spotify,
-    tracks: List[Dict],
-    name: str,
+    tracks,
+    name: str = "",
     description: str = ""
 ) -> Optional[Dict]:
-    """Create a playlist with the given tracks."""
+    """
+    Create playlist(s) with the given tracks.
+    
+    If 'tracks' is a list, creates a single playlist using the provided 'name'.
+    If 'tracks' is a dict, iterates over key-value pairs and creates a playlist
+    for each, using the key (capitalized) as the playlist name.
+    """
     user_id = client.me()['id']
-    playlist = client.user_playlist_create(
-        user=user_id,
-        name=name,
-        description=description
-    )
-    track_uris = list(map(lambda t: t['uri'], tracks))
-    client.playlist_add_items(playlist['id'], track_uris)
-    return playlist
+    if isinstance(tracks, dict):
+        playlists = {}
+        for playlist_name, track_list in tracks.items():
+            # Capitalize each word in the playlist name
+            formatted_name = playlist_name.title()
+            playlist = client.user_playlist_create(
+                user=user_id,
+                name=formatted_name,
+                description=description
+            )
+            track_uris = list(map(lambda t: t['uri'], track_list))
+            client.playlist_add_items(playlist['id'], track_uris)
+            playlists[formatted_name] = playlist
+        return playlists
+    else:
+        playlist = client.user_playlist_create(
+            user=user_id,
+            name=name,
+            description=description
+        )
+        track_uris = list(map(lambda t: t['uri'], tracks))
+        client.playlist_add_items(playlist['id'], track_uris)
+        return playlist
 
 
 # Create partial functions with client for easier usage

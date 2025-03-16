@@ -3,6 +3,7 @@ Core Wrapper for all the fun stuff
 """
 from typing import List, Dict, Optional,Sequence
 import os
+import json
 from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.messages import AgentEvent, ChatMessage
 from autogen_agentchat.teams import SelectorGroupChat
@@ -34,15 +35,18 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
         system_message=PromptManager().get_prompt('router_agent',query=query, history=[]),
         model_client=openai_client,
     )
-    spotify_search_assistant = SpotifyAgent(
-        name="spotify_search_assistant"
+    spotify_agent_assistant = SpotifyAgent(
+        name="spotify_agent_assistant"
     )
+    try:
+        spotify_agent_assistant.playlist = json.loads(playlist)
+    except:
+        spotify_agent_assistant.playlist = (playlist)
     prompt_manager = PromptManager()
     format_assistant = AssistantAgent(
         name="format_assistant",
         model_client=openai_client,
         system_message=prompt_manager.get_prompt("format_playlist_response"),
-        # is_termination_msg=lambda msg: "<END_CONVERSATION>" in msg  # Check for <END_CONVERSATION> token
     )
     search_assistant = AssistantAgent(
         name="search_assistant",
@@ -51,7 +55,7 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
     )
     def custom_speaker_selection_func(messages: Sequence[AgentEvent | ChatMessage]) -> str | None:
         """Define the conversation flow between agents.
-        Flow: router_agent -> search_assistant -> spotify_search_assistant -> format_assistant
+        Flow: router_agent -> search_assistant -> spotify_agent_assistant -> format_assistant
         """
         last_message = messages[-1]
         if last_message.source == 'user':
@@ -63,26 +67,26 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
                 if action == "search_tracks":
                     return search_assistant.name
                 # Note: Add playlist agent handling here when implemented
-                # elif action == "make_playlist":
-                #     return playlist_agent
+                elif action == "make_playlist":
+                    return spotify_agent_assistant.name
             except (KeyError, ValueError) as e:
                 print("Message appears to be user input, routing to router_agent")
                 if last_message.role == "user":
                     return router_agent.name
                 print("JSON parsing error:", e)
                 return None
-        if last_message.source == spotify_search_assistant.name:
-            print('last_speaker is spotify_search_assistant')
+        if last_message.source == spotify_agent_assistant.name:
+            print('last_speaker is spotify_agent_assistant')
             return format_assistant.name
         if last_message.source == search_assistant.name:
             print('last_speaker is search_assistant')
-            return spotify_search_assistant.name
+            return spotify_agent_assistant.name
         return None
     text_mention_termination = TextMentionTermination("<END_CONVERSATION>")
     max_messages_termination = MaxMessageTermination(max_messages=25)
     termination = text_mention_termination | max_messages_termination
     team = SelectorGroupChat(
-        [spotify_search_assistant, format_assistant, search_assistant, router_agent],
+        [spotify_agent_assistant, format_assistant, search_assistant, router_agent],
         selector_func=custom_speaker_selection_func,
         model_client=openai_client,
         termination_condition=termination
@@ -91,9 +95,8 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
         await team.load_state(history)
     response = await team.run(task=query)
     state = await team.save_state()
-
     return {
         "response": response.messages[-1].content,
-        "history": state,
-        "playlist": [] #get_spotify_assistant_message(groupchat.messages)
+        "state": state,
+        "playlist": get_spotify_assistant_message(response.messages)
     }

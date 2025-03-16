@@ -25,7 +25,7 @@ class SpotifyAgent(AssistantAgent):
     def __init__(self, name: str) -> None:
         super().__init__(name, "An agent that interfaces with Spotify API")
         self.spotify_client = create_spotify_client()
-
+        self.playlist = None
     @property
     def produced_message_types(self) -> Sequence[Type[ChatMessage]]:
         return (TextMessage,)
@@ -50,7 +50,7 @@ class SpotifyAgent(AssistantAgent):
             return
 
         search_keyword = self._extract_message_from_source(messages, "search_assistant")
-        router_agent = self._extract_message_from_source(messages, "router_agent")
+        router_action = self._extract_message_from_source(messages, "router_agent")
         if search_keyword:
             keyword = search_keyword.replace("search:", "", 1).strip()
             # Split the keyword by comma to search with multiple keywords if provided
@@ -58,35 +58,51 @@ class SpotifyAgent(AssistantAgent):
             all_results = {}
             for k in keywords:
                 try:
-                    result = search_tracks(client=self.spotify_client, keyword=k)
+                    result = search_tracks(
+                        client=self.spotify_client,
+                        keyword=k
+                    )
                     all_results[k] = result
-                except Exception as err:
+                except ConnectionError as err:
                     logger.error("Error searching tracks for '%s': %s", k, err)
                     all_results[k] = "Error searching tracks"
             response_content = json.dumps(all_results)
             yield Response(
-                chat_message=TextMessage(content=response_content, source=self.name),
+                chat_message=TextMessage(
+                    content=response_content,
+                    source=self.name
+                ),
                 inner_messages=[],
             )
-        # Uncomment the block below to handle playlist creation logic.
-        # elif search_keyword and "create_playlist:" in search_keyword:
-        #     tracks = search_keyword.replace("create_playlist:", "", 1).strip()
-        #     try:
-        #         result = create_playlist(client=self.spotify_client, tracks=tracks, name="My Playlist")
-        #         yield TextMessage(content=result, source=self.name)
-        #         yield Response(
-        #             chat_message=TextMessage(content="Playlist created", source=self.name),
-        #             inner_messages=[],
-        #         )
-        #     except Exception as err:
-        #         logger.error("Error creating playlist: %s", err)
-        #         yield Response(
-        #             chat_message=TextMessage(content="Error creating playlist", source=self.name),
-        #             inner_messages=[],
-        #         )
+        elif router_action and json.loads(router_action).get("action") == "make_playlist":
+            try:
+                result = create_playlist(
+                    client=self.spotify_client,
+                    tracks=self.playlist,
+                    name="My Playlist"
+                )
+                yield Response(
+                    chat_message=TextMessage(
+                        content="Playlist created",
+                        source=self.name
+                    ),
+                    inner_messages=[],
+                )
+            except (ConnectionError, ValueError) as err:
+                logger.error("Error creating playlist: %s", err)
+                yield Response(
+                    chat_message=TextMessage(
+                        content="Error creating playlist",
+                        source=self.name
+                    ),
+                    inner_messages=[],
+                )
         else:
             yield Response(
-                chat_message=TextMessage(content="No valid action message detected.", source=self.name),
+                chat_message=TextMessage(
+                    content="No valid action message detected.",
+                    source=self.name
+                ),
                 inner_messages=[],
             )
 
@@ -106,4 +122,4 @@ class SpotifyAgent(AssistantAgent):
         Resets any stateful components if necessary.
         No specific reset actions are required for this agent.
         """
-        pass
+        del cancellation_token
