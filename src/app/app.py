@@ -7,7 +7,17 @@ from agent import get_music_recommendations
 import firebase_admin
 from firebase_admin import credentials, firestore
 from fastapi import Request
+from fastapi.middleware.cors import CORSMiddleware
+
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Or specify your frontend's URL
+    allow_credentials=True,
+    allow_methods=["*"],  # This allows POST, GET, OPTIONS, etc.
+    allow_headers=["*"],
+)
 
 class QueryText(BaseModel):
     """
