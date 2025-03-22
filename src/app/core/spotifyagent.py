@@ -52,28 +52,44 @@ class SpotifyAgent(AssistantAgent):
         search_keyword = self._extract_message_from_source(messages, "search_assistant")
         router_action = self._extract_message_from_source(messages, "router_agent")
         if search_keyword:
-            keyword = search_keyword.replace("search:", "", 1).strip()
-            # Split the keyword by comma to search with multiple keywords if provided
-            keywords = [k.strip() for k in keyword.split(",") if k.strip()]
-            all_results = {}
-            for k in keywords:
-                try:
-                    result = search_tracks(
-                        client=self.spotify_client,
-                        keyword=k
-                    )
-                    all_results[k] = result
-                except ConnectionError as err:
-                    logger.error("Error searching tracks for '%s': %s", k, err)
-                    all_results[k] = "Error searching tracks"
-            response_content = json.dumps(all_results)
-            yield Response(
-                chat_message=TextMessage(
-                    content=response_content,
-                    source=self.name
-                ),
-                inner_messages=[],
-            )
+            try:
+                # Parse the JSON format from Sporky
+                keywords_data = json.loads(search_keyword.replace("search:", "", 1).strip())
+                all_results = {}
+                
+                for item in keywords_data:
+                    keyword = item.get("keyword", "").strip()
+                    num_results = item.get("results", 10)# Default to 3 if not specified
+                    
+                    if keyword:
+                        try:
+                            result = search_tracks(
+                                client=self.spotify_client,
+                                keyword=keyword,
+                                limit=num_results  # Pass the requested number of results
+                            )
+                            all_results[keyword] = result
+                        except ConnectionError as err:
+                            logger.error("Error searching tracks for '%s': %s", keyword, err)
+                            all_results[keyword] = "Error searching tracks"
+                
+                response_content = json.dumps(all_results)
+                yield Response(
+                    chat_message=TextMessage(
+                        content=response_content,
+                        source=self.name
+                    ),
+                    inner_messages=[],
+                )
+            except json.JSONDecodeError as err:
+                logger.error("Error parsing JSON from search assistant: %s", err)
+                yield Response(
+                    chat_message=TextMessage(
+                        content="Error parsing search keywords. Expected valid JSON format.",
+                        source=self.name
+                    ),
+                    inner_messages=[],
+                )
         elif router_action and json.loads(router_action).get("action") == "make_playlist":
             try:
                 result = create_playlist(
