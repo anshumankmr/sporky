@@ -115,7 +115,7 @@ def send_message(message):
             API_URL,
             headers={"Content-Type": "application/json"},
             data=json.dumps(payload),
-            timeout=60
+            # timeout=60
         )
         response.raise_for_status()
         
