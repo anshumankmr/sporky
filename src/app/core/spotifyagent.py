@@ -12,6 +12,7 @@ from autogen_agentchat.agents import AssistantAgent
 from autogen_agentchat.base import Response
 from autogen_agentchat.messages import AgentEvent, ChatMessage, TextMessage
 from autogen_core import CancellationToken
+from tools.llm_tools import extract_json_from_llm_response
 from tools.spotify_tools import search_tracks, create_playlist, create_spotify_client
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,7 @@ class SpotifyAgent(AssistantAgent):
 
         search_keyword = self._extract_message_from_source(messages, "search_assistant")
         router_action = self._extract_message_from_source(messages, "router_agent")
+        
         if search_keyword:
             try:
                 # Parse the JSON format from Sporky
@@ -92,10 +94,11 @@ class SpotifyAgent(AssistantAgent):
                 )
         elif router_action and json.loads(router_action).get("action") == "make_playlist":
             try:
+                details = extract_json_from_llm_response(self._extract_message_from_source(messages, "details_agent"))
                 result = create_playlist(
                     client=self.spotify_client,
                     tracks=self.playlist,
-                    name="My Playlist"
+                    name=details.get("name","My Playlist")
                 )
                 yield Response(
                     chat_message=TextMessage(

@@ -86,19 +86,16 @@ def create_playlist(
     """
     user_id = client.me()['id']
     if isinstance(tracks, dict):
-        playlists = {}
-        for playlist_name, track_list in tracks.items():
-            # Capitalize each word in the playlist name
-            formatted_name = playlist_name.title()
-            playlist = client.user_playlist_create(
-                user=user_id,
-                name=formatted_name,
-                description=description
-            )
-            track_uris = list(map(lambda t: t['uri'], track_list))
-            client.playlist_add_items(playlist['id'], track_uris)
-            playlists[formatted_name] = playlist
-        return playlists
+        all_track_uris = []
+        for _, track_list in tracks.items():
+            all_track_uris.extend([t['uri'] for t in track_list])
+        playlist = client.user_playlist_create(
+            user=user_id,
+            name=name.title(),
+            description=description
+        )
+        client.playlist_add_items(playlist['id'], all_track_uris)
+        return playlist
     else:
         playlist = client.user_playlist_create(
             user=user_id,
@@ -118,9 +115,3 @@ def create_spotify_tools(client: spotipy.Spotify = None) -> Dict[str, Callable]:
         'search_tracks': partial(search_tracks, client),
         'create_playlist': partial(create_playlist, client)
     }
-
-# Usage example:
-    # if __name__ == "__main__":
-    #     spotify = create_spotify_tools()
-    #     tracks = spotify['search_tracks']("Elton John", limit=5)
-    #     spotify['create_playlist'](tracks, "Elton John Playlist")
