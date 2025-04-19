@@ -6,7 +6,7 @@ from pydantic import BaseModel
 from agent import get_music_recommendations
 import firebase_admin
 from firebase_admin import credentials, firestore
-from fastapi import Request
+# from fastapi import Request
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
@@ -55,7 +55,7 @@ def fetch_hist():
             doc = doc_ref.get()
             if doc.exists:
                 query_text.history = doc.to_dict().get('history', [])
-                print(query_text.history)
+                # print(query_text.history)
             
             # Fetch playlist before execution
             playlist_doc_ref = db.collection('playlists').document(query_text.session_id)

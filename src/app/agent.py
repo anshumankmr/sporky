@@ -84,7 +84,7 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
     details_agent = AssistantAgent(
         name="details_agent",
         model_client=openai_client,
-        system_message=PromptManager().get_prompt("details_agent_prompt"),
+        system_message=PromptManager().get_prompt("details_agent_prompt",query=query),
     )
 
     def custom_speaker_selection_func(messages: Sequence[AgentEvent | ChatMessage]) -> str | None:
@@ -99,14 +99,14 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
         if last_message.source == router_agent.name:
             print('last_speaker is router_agent')
             try:
-                action = extract_json_from_llm_response(last_message.content)["action"]
-                if action == "search_tracks":
-                    return search_assistant.name
-                elif action == "make_playlist":
-                    return details_agent.name  # Route to details_agent for playlist details.
+                    action = extract_json_from_llm_response(last_message.content).get("action")
+                    if action == "search_tracks":
+                        return search_assistant.name
+                    elif action == "make_playlist":
+                        return details_agent.name  # Route to details_agent for playlist details.
             except (KeyError, ValueError) as e:
                 print("Message appears to be user input, routing to router_agent")
-                if last_message.role == "user":
+                if last_message.source == "user":
                     return router_agent.name
                 print("JSON parsing error:", e)
                 return None
@@ -115,6 +115,9 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
             print('last_speaker is details_agent')
             try:
                 details = extract_json_from_llm_response(last_message.content)
+                print(details,last_message.content)
+                if details == {}:
+                    return None
                 # If a valid 'name' is provided, proceed to framing_agent.
                 if details.get("name") and details.get("complete"):
                     return framing_agent.name
@@ -127,7 +130,18 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
 
         if last_message.source == framing_agent.name:
             print('last_speaker is framing_agent')
-            return spotify_agent_assistant.name
+            try:
+                details = extract_json_from_llm_response(last_message.content)
+                print(details,last_message.content)
+                # If a valid 'name' is provided, proceed to framing_agent.
+                if details.get("name") and details.get("complete"):
+                    return spotify_agent_assistant.name
+                else:
+                    # If details are incomplete, continue with details_agent.
+                    return None
+            except (json.JSONDecodeError, KeyError, ValueError) as e:
+                print("Error parsing details_agent output:", e)
+                return spotify_agent_assistant.name
 
         if last_message.source == search_assistant.name:
             print('last_speaker is search_assistant')
@@ -145,11 +159,7 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
     framing_agent = AssistantAgent(
         name="framing_agent",
         model_client=openai_client,
-        system_message="""
-You are a framing assistant. Your task is to use the current playlist details to frame a final response confirming the creation of the playlist.
-Based on the details provided, produce a short, friendly message that confirms the playlist name and any optional description.
-Do not include any extra text, just your final response.
-"""
+        system_message=prompt_manager.get_prompt("framing_agent",query=query)
     )
 
     team = SelectorGroupChat(

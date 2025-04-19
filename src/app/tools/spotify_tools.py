@@ -78,33 +78,38 @@ def create_playlist(
     description: str = ""
 ) -> Optional[Dict]:
     """
-    Create playlist(s) with the given tracks.
+    Create a playlist with the given tracks.
     
-    If 'tracks' is a list, creates a single playlist using the provided 'name'.
-    If 'tracks' is a dict, iterates over key-value pairs and creates a playlist
-    for each, using the key (capitalized) as the playlist name.
+    Combines all tracks into a single playlist, removing duplicates.
+    Returns the playlist name.
     """
     user_id = client.me()['id']
+    
+    # Create single playlist
+    playlist = client.user_playlist_create(
+        user=user_id,
+        name=name,
+        description=description
+    )
+    
+    # Get unique track URIs
+    track_uris = []
+    seen_uris = set()
+    
     if isinstance(tracks, dict):
-        all_track_uris = []
-        for _, track_list in tracks.items():
-            all_track_uris.extend([t['uri'] for t in track_list])
-        playlist = client.user_playlist_create(
-            user=user_id,
-            name=name.title(),
-            description=description
-        )
-        client.playlist_add_items(playlist['id'], all_track_uris)
-        return playlist
+        # Flatten dictionary of tracks into single list
+        all_tracks = [track for track_list in tracks.values() for track in track_list]
     else:
-        playlist = client.user_playlist_create(
-            user=user_id,
-            name=name,
-            description=description
-        )
-        track_uris = list(map(lambda t: t['uri'], tracks))
-        client.playlist_add_items(playlist['id'], track_uris)
-        return playlist
+        all_tracks = tracks
+    
+    # Add unique tracks
+    for track in all_tracks:
+        if track['uri'] not in seen_uris:
+            track_uris.append(track['uri'])
+            seen_uris.add(track['uri'])
+    
+    client.playlist_add_items(playlist['id'], track_uris)
+    return name
 
 
 # Create partial functions with client for easier usage

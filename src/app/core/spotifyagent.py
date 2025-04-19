@@ -52,7 +52,7 @@ class SpotifyAgent(AssistantAgent):
 
         search_keyword = self._extract_message_from_source(messages, "search_assistant")
         router_action = self._extract_message_from_source(messages, "router_agent")
-        
+        print(search_keyword, router_action)
         if search_keyword:
             try:
                 # Parse the JSON format from Sporky
@@ -94,7 +94,7 @@ class SpotifyAgent(AssistantAgent):
                 )
         elif router_action and json.loads(router_action).get("action") == "make_playlist":
             try:
-                details = extract_json_from_llm_response(self._extract_message_from_source(messages, "details_agent"))
+                details = extract_json_from_llm_response(messages[-1].content)
                 result = create_playlist(
                     client=self.spotify_client,
                     tracks=self.playlist,
@@ -102,7 +102,7 @@ class SpotifyAgent(AssistantAgent):
                 )
                 yield Response(
                     chat_message=TextMessage(
-                        content="Playlist created",
+                         content="Playlist created",
                         source=self.name
                     ),
                     inner_messages=[],
