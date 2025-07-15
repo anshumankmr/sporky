@@ -83,32 +83,42 @@ def create_playlist(
     Combines all tracks into a single playlist, removing duplicates.
     Returns the playlist name.
     """
+    print("Fetching user ID...")
     user_id = client.me()['id']
+    print(f"User ID fetched: {user_id}")
     
-    # Create single playlist
+    print(f"Creating playlist with name: {name} and description: {description}...")
     playlist = client.user_playlist_create(
         user=user_id,
         name=name,
         description=description
     )
+    print(f"Playlist created with ID: {playlist['id']}")
     
     # Get unique track URIs
     track_uris = []
     seen_uris = set()
     
+    print("Processing tracks to remove duplicates...")
     if isinstance(tracks, dict):
         # Flatten dictionary of tracks into single list
         all_tracks = [track for track_list in tracks.values() for track in track_list]
+        print(f"Flattened tracks from dictionary. Total tracks: {len(all_tracks)}")
     else:
         all_tracks = tracks
+        print(f"Tracks provided as list. Total tracks: {len(all_tracks)}")
     
     # Add unique tracks
     for track in all_tracks:
         if track['uri'] not in seen_uris:
             track_uris.append(track['uri'])
             seen_uris.add(track['uri'])
+    print(f"Unique tracks identified. Total unique tracks: {len(track_uris)}")
     
+    print(f"Adding tracks to playlist with ID: {playlist['id']}...")
     client.playlist_add_items(playlist['id'], track_uris)
+    print("Tracks added successfully.")
+    
     return name
 
 

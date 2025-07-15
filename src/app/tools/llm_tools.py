@@ -1,31 +1,41 @@
-import json
 import re
+import json
 
 def extract_json_from_llm_response(response_text):
     """
-    Extract JSON from an LLM response text and convert it to a Python dictionary.
+    Extract JSON (object or array) from an LLM response text and convert it to a Python value.
     
     Args:
         response_text (str): The text response from an LLM that contains JSON.
         
     Returns:
-        dict: The extracted JSON as a Python dictionary.
-              Returns an empty dict if no valid JSON is found.
+        object: The extracted JSON as a Python dict/list/etc.
+                Returns None if no valid JSON is found.
     """
-    # Find content between curly braces (simple JSON detection)
-    json_pattern = r'\{(?:[^{}]|(?:\{(?:[^{}]|(?:\{[^{}]*\}))*\}))*\}'
-    json_match = re.search(json_pattern, response_text)
+    # Find the first opening brace or bracket
+    start_match = re.search(r'[\{\[]', response_text)
+    if not start_match:
+        return None
     
-    if json_match:
-        json_str = json_match.group(0)
-        try:
-            # Parse the extracted JSON string into a Python dictionary
-            json_dict = json.loads(json_str)
-            return json_dict
-        except json.JSONDecodeError:
-            # Return empty dict if JSON parsing fails
-            return {}
+    start = start_match.start()
+    opener = response_text[start]
+    closer = '}' if opener == '{' else ']'
+    
+    # Walk forward, counting nested openers/closers
+    depth = 0
+    for i, ch in enumerate(response_text[start:], start):
+        if ch == opener:
+            depth += 1
+        elif ch == closer:
+            depth -= 1
+            if depth == 0:
+                candidate = response_text[start:i+1]
+                break
     else:
-        # Return empty dict if no JSON pattern is found
-        return {}
-
+        # never closed
+        return None
+    
+    try:
+        return json.loads(candidate)
+    except json.JSONDecodeError:
+        return None

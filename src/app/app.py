@@ -73,7 +73,7 @@ def fetch_hist():
                 )
 
             # Optionally, update playlist in Firestore if it was modified in the response
-            if isinstance(result, dict) and "playlist" in result:
+            if isinstance(result, dict) and "playlist" in result and result["playlist"]:
                 playlist = result["playlist"]
                 playlist_doc_ref = db.collection('playlists').document(query_text.session_id)
                 playlist_doc_ref.set({'playlist': playlist}, merge=True)

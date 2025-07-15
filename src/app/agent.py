@@ -14,18 +14,20 @@ from autogen_agentchat.conditions import MaxMessageTermination, TextMentionTermi
 # from autogen_core import CancellationToken
 # from autogen_agentchat.messages import TextMessage
 from core.spotifyagent import SpotifyAgent
+from core.detailsagent import PlaylistDetailsAgent
 from core.prompt import PromptManager
-from config.llm_config import openai_client, groq_client
+from config.llm_config import openai_client, gemini_client
 from tools.spotify_tools import get_spotify_assistant_message
 from tools.llm_tools import extract_json_from_llm_response
+
 
 logging.basicConfig(level=logging.WARNING)
 trace_logger = logging.getLogger(TRACE_LOGGER_NAME)
 trace_logger.addHandler(logging.StreamHandler())
 trace_logger.setLevel(logging.DEBUG)
 
-if os.getenv('LOCAL') == 'true':
-    openai_client = groq_client
+if os.getenv('LOCAL').lower() == 'true':
+    openai_client = gemini_client
 
 def merge_json_lists(data):
     """
@@ -81,11 +83,18 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
         model_client=openai_client,
         system_message=sporky_system_prompt,
     )
-    details_agent = AssistantAgent(
+    not_complete_response_assistant = AssistantAgent(
+        name="not_complete_response_assistant",
+        model_client=openai_client,
+        system_message="You are a strict assistant. Always reply with exactly this sentence: 'It seems I might need the details to proceed' Do not add or infer anything else."
+    )
+
+    details_agent = PlaylistDetailsAgent(
         name="details_agent",
         model_client=openai_client,
-        system_message=PromptManager().get_prompt("details_agent_prompt",query=query),
+        query_text = query
     )
+
 
     def custom_speaker_selection_func(messages: Sequence[AgentEvent | ChatMessage]) -> str | None:
         """Define the conversation flow between agents.
@@ -116,14 +125,11 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
             try:
                 details = extract_json_from_llm_response(last_message.content)
                 print(details,last_message.content)
-                if details == {}:
-                    return None
-                # If a valid 'name' is provided, proceed to framing_agent.
-                if details.get("name") and details.get("complete"):
-                    return framing_agent.name
-                else:
-                    # If details are incomplete, continue with details_agent.
-                    return framing_agent.name
+                # if details is None
+                if not details or details is None or (type(details) == dict and details.get("name") == "" or details.get("name") is None):
+                    return not_complete_response_assistant.name
+                return framing_agent.name
+    
             except (json.JSONDecodeError, KeyError, ValueError) as e:
                 print("Error parsing details_agent output:", e)
                 return details_agent.name
@@ -134,7 +140,7 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
                 details = extract_json_from_llm_response(last_message.content)
                 print(details,last_message.content)
                 # If a valid 'name' is provided, proceed to framing_agent.
-                if details.get("name") and details.get("complete"):
+                if details and details.get("name") and details.get("complete"):
                     return spotify_agent_assistant.name
                 else:
                     # If details are incomplete, continue with details_agent.
@@ -150,11 +156,16 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
         if last_message.source == spotify_agent_assistant.name:
             print('last_speaker is spotify_agent_assistant')
             return format_assistant.name
-
+        if last_message.source == format_assistant.name:
+            print('last_speaker is format_assistant')
+            return None
+        if last_message.source == not_complete_response_assistant.name:
+            print('last_speaker is not_complete_response_assistant')
+            return None
         return None
 
     text_mention_termination = TextMentionTermination("<END_CONVERSATION>")
-    max_messages_termination = MaxMessageTermination(max_messages=25)
+    max_messages_termination = MaxMessageTermination(max_messages=10)
     termination = text_mention_termination | max_messages_termination
     framing_agent = AssistantAgent(
         name="framing_agent",
@@ -163,7 +174,7 @@ async def get_music_recommendations(query: str, playlist: Optional[str], history
     )
 
     team = SelectorGroupChat(
-        [spotify_agent_assistant, format_assistant, search_assistant, router_agent, details_agent, framing_agent],
+        [spotify_agent_assistant, format_assistant, search_assistant, router_agent,not_complete_response_assistant, details_agent, framing_agent],
         selector_func=custom_speaker_selection_func,
         model_client=openai_client,
         termination_condition=termination

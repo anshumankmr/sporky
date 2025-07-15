@@ -56,10 +56,13 @@ class SpotifyAgent(AssistantAgent):
         if search_keyword:
             try:
                 # Parse the JSON format from Sporky
-                keywords_data = json.loads(search_keyword.replace("search:", "", 1).strip())
+                keywords_data = extract_json_from_llm_response(search_keyword.replace("search:", "", 1).strip())
                 all_results = {}
                 
                 for item in keywords_data:
+                    if not isinstance(item, dict):
+                        logger.error("Invalid item format in search keywords: %s", item)
+                        continue
                     keyword = item.get("keyword", "").strip()
                     num_results = item.get("results", 10)# Default to 3 if not specified
                     
