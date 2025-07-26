@@ -1,6 +1,29 @@
 import re
 import json
+from collections import defaultdict
 
+def merge_json_lists(data):
+    """
+    Merge JSON lists by track name.
+    """
+    # Handle string input (assume JSON string)
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except json.JSONDecodeError:
+            return ''
+
+    # Ensure it's a dictionary
+    if not isinstance(data, dict):
+        raise TypeError("Input must be a dictionary or a valid JSON string.")
+
+    merged_dict = defaultdict(list)
+
+    for _, track_list in data.items():
+        for track in track_list:
+            merged_dict[track["name"]].append(track)
+
+    return dict(merged_dict)
 def extract_json_from_llm_response(response_text):
     """
     Extract JSON (object or array) from an LLM response text and convert it to a Python value.
