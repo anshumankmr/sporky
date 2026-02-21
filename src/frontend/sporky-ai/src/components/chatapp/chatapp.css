@@ -159,3 +159,58 @@
   .suggestion-chip:hover {
     background-color: var(--spotify-grey-light);
   }
+
+  /* Approval state — highlight input border */
+  .chat-input--approval {
+    border-color: var(--spotify-green);
+  }
+
+  .chat-component {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  /* Sidebar user section */
+  .sidebar-user {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 8px;
+    border-top: 1px solid #333;
+    margin-top: auto;
+  }
+
+  .sidebar-user__avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+  }
+
+  .sidebar-user__name {
+    font-size: 13px;
+    color: #b3b3b3;
+    text-align: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 200px;
+  }
+
+  .sidebar-logout-btn {
+    background: transparent;
+    border: 1px solid #535353;
+    color: #b3b3b3;
+    border-radius: 20px;
+    padding: 5px 14px;
+    font-size: 12px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+
+  .sidebar-logout-btn:hover {
+    border-color: #fff;
+    color: #fff;
+  }

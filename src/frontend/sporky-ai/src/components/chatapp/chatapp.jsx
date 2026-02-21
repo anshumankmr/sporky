@@ -1,129 +1,84 @@
 import { useState, useEffect } from 'react';
-import './ChatApp.css'; // You'll need to create this CSS file
+import { useAuth } from '../../contexts/AuthContext';
+import PlaylistCard from '../PlaylistCard';
+import './ChatApp.css';
+
+const API_URL = 'http://127.0.0.1:8080/query';
+
+const WELCOME_MESSAGE = `Hi there! I'm Sporky 😄
+
+I'm here to help you create the perfect playlist for any mood. Let's make some musical magic together!`;
+
+const suggestions = [
+  "Workout music",
+  "Stuff to listen while working",
+  "Sleep music",
+  "something completely random"
+];
 
 function ChatApp({ sessionId }) {
-  // State initialization
+  const { accessToken } = useAuth();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [showSuggestions, setShowSuggestions] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
+  const [pendingApproval, setPendingApproval] = useState(false);
 
-  // API URL
-  const API_URL = "http://127.0.0.1:8080/query";
-
-  // Welcome message
-  const WELCOME_MESSAGE = `Hi there! I'm Sporky 😄
-
-I'm here to help you create the perfect playlist for any mood. Let's make some musical magic together!`;
-
-  // Suggestion chips
-  const suggestions = [
-    "Workout music",
-    "Stuff to listen while working",
-    "Sleep music",
-    "something completely random"
-  ];
-
-  // Initialize chat with welcome message
   useEffect(() => {
-    setMessages([{
-      role: "assistant",
-      content: WELCOME_MESSAGE
-    }]);
-  }, [sessionId]); // Re-initialize when sessionId changes
+    setMessages([{ role: 'assistant', content: WELCOME_MESSAGE, playlist: null }]);
+    setShowSuggestions(true);
+    setPendingApproval(false);
+  }, [sessionId]);
 
-  // Send message to API
   const sendMessage = async (message) => {
-    // Add user message to chat
-    setMessages(prevMessages => [...prevMessages, { role: "user", content: message }]);
+    setMessages(prev => [...prev, { role: 'user', content: message, playlist: null }]);
     setShowSuggestions(false);
     setInput('');
     setIsLoading(true);
 
-    // Prepare API request
     try {
-      const payload = {
-        query: message,
-        session_id: sessionId
-      };
+      const response = await fetch(API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          ...(accessToken ? { 'X-Spotify-Token': accessToken } : {}),
+        },
+        body: JSON.stringify({ query: message, session_id: sessionId }),
+      });
 
-      // Try POST request first
-      try {
-        const response = await fetch(API_URL, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Accept': 'application/json'
-          },
-          body: JSON.stringify(payload)
-        });
-
-        if (response.ok) {
-          const responseData = await response.json();
-          
-          if (responseData) {
-            const botResponse = responseData.response || "I didn't get a response. Please try again.";
-            setMessages(prevMessages => [...prevMessages, { role: "assistant", content: botResponse }]);
-          } else {
-            throw new Error("Empty response received");
-          }
-          setIsLoading(false);
-          return;
-        }
-        
-        // If POST fails with 405, try GET as fallback
-        if (response.status === 405) {
-          throw new Error("POST method not allowed, trying GET");
-        } else {
-          throw new Error(`HTTP error! Status: ${response.status}`);
-        }
-      } catch (postError) {
-        console.log("POST request failed:", postError.message);
-        
-        // Try GET request with query parameters
-        const queryParams = new URLSearchParams({
-          query: message,
-          session_id: sessionId
-        }).toString();
-        
-        const getResponse = await fetch(`${API_URL}?${queryParams}`, {
-          method: 'GET',
-          headers: { 
-            'Accept': 'application/json'
-          }
-        });
-
-        if (!getResponse.ok) {
-          throw new Error(`GET request also failed with status: ${getResponse.status}`);
-        }
-
-        const responseData = await getResponse.json();
-        
-        if (responseData) {
-          const botResponse = responseData.response || "I didn't get a response. Please try again.";
-          setMessages(prevMessages => [...prevMessages, { role: "assistant", content: botResponse }]);
-        } else {
-          throw new Error("Empty response received from GET request");
-        }
+      if (!response.ok) {
+        throw new Error(`Server error: ${response.status}`);
       }
+
+      const data = await response.json();
+      const botContent = data.response || "I didn't get a response. Please try again.";
+      const playlist = Array.isArray(data.playlist) ? data.playlist : null;
+      const awaitingApproval = Boolean(data.awaiting_approval);
+
+      setPendingApproval(awaitingApproval);
+      setMessages(prev => [...prev, { role: 'assistant', content: botContent, playlist }]);
     } catch (error) {
-      setMessages(prevMessages => [...prevMessages, { 
-        role: "assistant", 
-        content: `I apologize, but I encountered an error: ${error.message}. Please check your server configuration.` 
-      }]);
-      console.error("API request failed:", error);
+      setMessages(prev => [
+        ...prev,
+        { role: 'assistant', content: `Sorry, I hit an error: ${error.message}. Please try again.`, playlist: null }
+      ]);
+      console.error('API error:', error);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Handle form submission
   const handleSubmit = (e) => {
     e.preventDefault();
-    if (input.trim()) {
-      sendMessage(input);
+    if (input.trim() && !isLoading) {
+      sendMessage(input.trim());
     }
   };
+
+  const placeholder = pendingApproval
+    ? 'Type yes or no...'
+    : 'Ask Sporky for music recommendations...';
 
   return (
     <div className="chat-component">
@@ -131,41 +86,43 @@ I'm here to help you create the perfect playlist for any mood. Let's make some m
         {messages.map((message, index) => (
           <div key={index} className={`message ${message.role}`}>
             <div className="message-content">{message.content}</div>
-            
-            {/* Show suggestions only after welcome message */}
-            {index === 0 && message.role === "assistant" && showSuggestions && (
+
+            {message.playlist && <PlaylistCard tracks={message.playlist} />}
+
+            {index === 0 && message.role === 'assistant' && showSuggestions && (
               <div className="suggestion-chips">
-                {suggestions.map((suggestion) => (
+                {suggestions.map((s) => (
                   <button
-                    key={suggestion}
+                    key={s}
                     className="suggestion-chip"
-                    onClick={() => sendMessage(suggestion)}
+                    onClick={() => sendMessage(s)}
                   >
-                    {suggestion}
+                    {s}
                   </button>
                 ))}
               </div>
             )}
           </div>
         ))}
+
         {isLoading && (
           <div className="message assistant">
             <div className="message-content">Loading...</div>
           </div>
         )}
       </div>
-      
+
       <form className="input-form" onSubmit={handleSubmit}>
         <input
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask Sporky for music recommendations..."
-          className="chat-input"
+          placeholder={placeholder}
+          className={`chat-input${pendingApproval ? ' chat-input--approval' : ''}`}
           disabled={isLoading}
         />
-        <button type="submit" className="send-button" disabled={isLoading}>
-          {isLoading ? "Sending..." : "Send"}
+        <button type="submit" className="send-button" disabled={isLoading || !input.trim()}>
+          {isLoading ? '...' : 'Send'}
         </button>
       </form>
     </div>

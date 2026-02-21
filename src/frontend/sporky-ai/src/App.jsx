@@ -1,35 +1,54 @@
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import './App.css';
+
+import { AuthProvider } from './contexts/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
+import CookieBanner from './components/CookieBanner';
 import ChatApp from './components/chatapp/chatapp';
-import SignupForm from './components/signupform/signupform';
 import Sidebar from './components/sidebar/sidebar';
+import LoginPage from './pages/LoginPage';
+import CallbackPage from './pages/CallbackPage';
+import OnboardingPage from './pages/OnboardingPage';
+
+function LoginOrCallback() {
+  const { search } = useLocation();
+  return new URLSearchParams(search).has('code') ? <CallbackPage /> : <LoginPage />;
+}
 
 function App() {
-  // Global state that might be needed across components
   const [sessionId, setSessionId] = useState(uuidv4());
-  
-  // Start new chat - can be passed to components that need it
+
   const startNewChat = () => {
     setSessionId(uuidv4());
   };
 
   return (
-    <Router>
-      <div className="app-container">
-        <Sidebar startNewChat={startNewChat} />
-        
-        <div className="main-content">
-          <Routes>
-            <Route path="/chat" element={<ChatApp sessionId={sessionId} />} />
-            <Route path="/signup" element={<SignupForm />} />
-            {/* Redirect to chat by default */}
-            <Route path="*" element={<Navigate to="/chat" replace />} />
-          </Routes>
-        </div>
-      </div>
-    </Router>
+    <AuthProvider>
+      <CookieBanner />
+      <Router>
+        <Routes>
+          <Route path="/login" element={<LoginOrCallback />} />
+          <Route path="/callback" element={<CallbackPage />} />
+          <Route path="/onboarding" element={<OnboardingPage />} />
+          <Route
+            path="/chat"
+            element={
+              <ProtectedRoute>
+                <div className="app-container">
+                  <Sidebar startNewChat={startNewChat} />
+                  <div className="main-content">
+                    <ChatApp sessionId={sessionId} />
+                  </div>
+                </div>
+              </ProtectedRoute>
+            }
+          />
+          <Route path="*" element={<Navigate to="/chat" replace />} />
+        </Routes>
+      </Router>
+    </AuthProvider>
   );
 }
 
